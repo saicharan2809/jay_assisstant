@@ -1,10 +1,10 @@
-# 🤖 Jay AI Assistant
+ 🤖 Jay AI Assistant
 
 A high-performance, modular **Autonomous AI Assistant** designed for desktop automation, offline speech recognition, and intelligent conversational reasoning. Built with a clean **9-step event pipeline**, Jay offers both an instant **Terminal Chat Mode** and a seamless **Voice Activation Mode**.
 
 ---
 
-## 🌟 Key Highlights
+ 🌟 Key Highlights
 
 - **Dual-Mode Interaction**:
   - **Terminal Chat Mode (Default)**: Instant startup with zero microphone or background CPU overhead. Type commands or chat directly.
@@ -17,7 +17,7 @@ A high-performance, modular **Autonomous AI Assistant** designed for desktop aut
 
 ---
 
-## 🏗️ Architecture Pipeline
+ 🏗️ Architecture Pipeline
 
 Jay follows a modular 9-stage architecture separating direct system automation from deep LLM reasoning:
 
@@ -37,7 +37,7 @@ graph TD
 
 ---
 
-## 📂 Project Structure
+ 📂 Project Structure
 
 ```
 jay_assisstant/
@@ -61,9 +61,9 @@ jay_assisstant/
 
 ---
 
-## 🚀 Getting Started
+ 🚀 Getting Started
 
-### 1. Prerequisites
+ 1. Prerequisites
 - **Operating System**: Windows 10 / 11
 - **Python**: Version 3.10 or 3.11 recommended
 - **Ollama**: [Download Ollama](https://ollama.ai) and pull your preferred local model:
@@ -71,7 +71,7 @@ jay_assisstant/
   ollama pull mistral
   ```
 
-### 2. Installation
+ 2. Installation
 
 1. **Clone the Repository**:
    ```bash
@@ -98,7 +98,7 @@ jay_assisstant/
 
 ---
 
-## ⚙️ Configuration (`.env`)
+ ⚙️ Configuration (`.env`)
 
 | Variable | Default | Description |
 | :--- | :--- | :--- |
@@ -110,7 +110,7 @@ jay_assisstant/
 
 ---
 
-## 💻 Usage
+ 💻 Usage
 
 Launch Jay using the instant batch script:
 ```powershell
@@ -162,7 +162,7 @@ You > voice mode
 
 ---
 
-## 🗺️ Roadmap: Towards Full Agent Autonomy (JARVIS / EDITH)
+## 🗺️ Roadmap: Towards Full Agent Autonomy (JAY)
 
 - [ ] **Multimodal Screen Eyes (VLM)**: Analyze code errors, graphs, and open windows directly on screen.
 - [ ] **Autonomous Browser Agent (Playwright)**: Multi-step web navigation, form filling, and research scraping.
