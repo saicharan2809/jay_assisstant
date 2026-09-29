@@ -1,7 +1,12 @@
-
 pyttsx3>=2.99
 deepgram-sdk
 python-dotenv==1.0.0
 pyautogui==0.9.54
 psutil==5.9.8
-pyaudio
+sounddevice
+pygame
+edge-tts
+ollama
+scipy
+numpy
+librosa

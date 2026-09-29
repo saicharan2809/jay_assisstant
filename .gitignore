@@ -1,0 +1,44 @@
+# Virtual Environment
+jay_env/
+venv/
+env/
+ENV/
+
+# Environment Variables & Secrets
+.env
+.env.txt
+*.env
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Logs & Temporary Media
+*.log
+jay_log.txt
+*.mp3
+*.wav
+!wake_words/*.wav
+
+# IDE & Editor Configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Unrelated files
+bank_management.cpp
+26.1.2python.exe
+
