@@ -3,8 +3,8 @@ import numpy as np
 from openwakeword.model import Model
 
 print("Loading wake word model...")
-model = Model(wakeword_models=['hey_jarvis'], inference_framework='onnx')
-print("Say 'Hey Jarvis' to test...")
+model = Model(wakeword_models=['hey_jay'], inference_framework='onnx')
+print("Say 'Hey Jay' to test...")
 
 RATE = 16000
 CHUNK = 1280
@@ -16,6 +16,6 @@ while True:
     chunk = stream.read(CHUNK, exception_on_overflow=False)
     chunk = np.frombuffer(chunk, dtype=np.int16)
     prediction = model.predict(chunk)
-    score = prediction['hey_jarvis']
+    score = prediction['hey_jay']['score']
     if score > 0.5:
         print(f"Wake word detected! Score: {score:.2f}")

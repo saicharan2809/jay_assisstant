@@ -8,6 +8,12 @@ ENV/
 .env
 .env.txt
 *.env
+credentials.json
+token.json
+
+# Local runtime data and device-specific calibration
+data/
+airtouch_config.json
 
 # Python Cache & Bytecode
 __pycache__/

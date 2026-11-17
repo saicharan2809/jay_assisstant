@@ -4,7 +4,7 @@ import time
 import numpy as np
 import sounddevice as sd
 import librosa
-from config import WAKE_WORD_MODEL_PATH, SAMPLE_RATE
+from config import WAKE_WORD_MODEL_PATH, SAMPLE_RATE, state, state_lock
 
 wake_model = None
 wake_scaler = None
@@ -53,6 +53,9 @@ def is_wake_word(audio, sr=SAMPLE_RATE):
 
 def listen_for_wake_word():
     global _rolling_buffer
+    with state_lock:
+        if state.get("input_mode") != "voice":
+            return False
     try:
         # Record a 0.4-second audio step
         chunk = sd.rec(STEP_SIZE, samplerate=SAMPLE_RATE, channels=1, dtype='float32')

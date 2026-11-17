@@ -10,13 +10,60 @@ import pygame
 import threading
 import re
 
-from config import SAMPLE_RATE, CHUNK_SIZE, state, state_lock, TTS_VOICE, WHISPER_MODEL, INTERRUPT_MULTIPLIER
+from config import SAMPLE_RATE, CHUNK_SIZE, state, state_lock, TTS_VOICE, WHISPER_MODEL, INTERRUPT_MULTIPLIER, PLAY_CHIMES
 
 # Initialize Pygame Mixer for low-latency audio playback
 try:
-    pygame.mixer.init()
+    pygame.mixer.init(frequency=44100, size=-16, channels=2)
 except Exception as e:
     print(f"Pygame mixer init warning: {e}")
+
+# Procedural Sound FX Synthesizer (0 external audio files needed)
+_CHIME_CACHE = {}
+
+def _synthesize_chime(kind="wake"):
+    try:
+        sr = 44100
+        if kind == "wake":
+            # Sci-fi 2-tone rising chime (D5 -> A5)
+            dur = 0.35
+            t = np.linspace(0, dur, int(sr * dur), False)
+            freqs = np.where(t < 0.15, 587.33, 880.0)
+            env = np.exp(-t * 8)
+            wave = (np.sin(2 * np.pi * freqs * t) + 0.3 * np.sin(4 * np.pi * freqs * t)) * env
+        elif kind == "success":
+            # Ascending confirmation triad (C5 -> E5 -> G5)
+            dur = 0.28
+            t = np.linspace(0, dur, int(sr * dur), False)
+            freqs = np.where(t < 0.08, 523.25, np.where(t < 0.16, 659.25, 783.99))
+            env = np.exp(-t * 10)
+            wave = (np.sin(2 * np.pi * freqs * t) + 0.2 * np.sin(4 * np.pi * freqs * t)) * env
+        elif kind == "error":
+            # Subtle low double blip
+            dur = 0.25
+            t = np.linspace(0, dur, int(sr * dur), False)
+            wave = np.sin(2 * np.pi * 320 * t) * np.exp(-t * 12)
+        else:
+            return None
+            
+        audio = (wave * 0.35 * 32767).astype(np.int16)
+        stereo = np.column_stack((audio, audio))
+        return pygame.sndarray.make_sound(stereo)
+    except Exception as e:
+        return None
+
+def play_chime(kind="wake"):
+    if not PLAY_CHIMES:
+        return
+    try:
+        if kind not in _CHIME_CACHE:
+            _CHIME_CACHE[kind] = _synthesize_chime(kind)
+        snd = _CHIME_CACHE.get(kind)
+        if snd:
+            snd.play()
+    except Exception:
+        pass
+
 
 # Initialize Faster-Whisper (Local Offline STT Engine)
 whisper_model = None
@@ -28,7 +75,17 @@ try:
 except Exception as e:
     print(f"Faster-Whisper init error: {e}")
 
+def stop_microphone():
+    """Immediately stops all active microphone recording streams and releases the audio hardware."""
+    try:
+        sd.stop()
+    except Exception:
+        pass
+
 def calibrate_microphone():
+    with state_lock:
+        if state.get("input_mode") != "voice":
+            return
     print("Calibrating microphone sensitivity...")
     try:
         recording = sd.rec(int(SAMPLE_RATE * 2), samplerate=SAMPLE_RATE, channels=1, dtype='int16')
@@ -41,16 +98,58 @@ def calibrate_microphone():
     except Exception as e:
         print(f"Calibration failed: {e}")
 
+def _sanitize_tts_error(err):
+    """Sanitizes error messages to remove sensitive URL tokens or query parameters."""
+    err_str = str(err)
+    err_str = re.sub(r'TrustedClientToken=[^&\s\'"]+', 'TrustedClientToken=***', err_str)
+    err_str = re.sub(r'Sec-MS-GEC=[^&\s\'"]+', 'Sec-MS-GEC=***', err_str)
+    err_str = re.sub(r'Sec-MS-GEC-Version=[^&\s\'"]+', 'Sec-MS-GEC-Version=***', err_str)
+    err_str = re.sub(r'ConnectionId=[^&\s\'"]+', 'ConnectionId=***', err_str)
+    return err_str
+
+_fallback_tts_lock = threading.Lock()
+
+def _speak_fallback(text):
+    """
+    Offline local Windows TTS fallback (pyttsx3 / Windows SAPI).
+    Invoked if Edge TTS network service is unavailable or rate-limited.
+    """
+    with _fallback_tts_lock:
+        # 1. Try pyttsx3
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            engine.setProperty('rate', 185)
+            engine.say(text)
+            engine.runAndWait()
+            return True
+        except Exception as e_pyttsx3:
+            # 2. Try direct Windows SAPI
+            try:
+                import win32com.client
+                speaker = win32com.client.Dispatch("SAPI.SpVoice")
+                speaker.Speak(text)
+                return True
+            except Exception as e_sapi:
+                print(f"[TTS Fallback Error] pyttsx3: {e_pyttsx3}, SAPI: {e_sapi}")
+                return False
+
 async def _generate_speech(text, file_path):
     communicate = edge_tts.Communicate(text, TTS_VOICE)
     await communicate.save(file_path)
 
 def _listen_for_interrupt():
     with state_lock:
+        # Microphone must be completely OFF when not in active voice mode
+        if state.get("input_mode") != "voice":
+            return
         # Require a clear speaking volume (minimum floor 1200.0) to prevent minor room noise triggers
         threshold = max(state["ambient_threshold"] * INTERRUPT_MULTIPLIER, 1200.0)
         
     while pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+        with state_lock:
+            if state.get("input_mode") != "voice":
+                break
         try:
             chunk = sd.rec(CHUNK_SIZE, samplerate=SAMPLE_RATE, channels=1, dtype='int16')
             sd.wait()
@@ -71,14 +170,18 @@ def _speak_single_chunk(text_chunk):
 
     temp_speech_file = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False).name
     try:
-        asyncio.run(_generate_speech(text_chunk, temp_speech_file))
+        # Attempt primary Edge TTS with timeout to prevent hanging on network stalls
+        asyncio.run(asyncio.wait_for(_generate_speech(text_chunk, temp_speech_file), timeout=10.0))
         
         if pygame.mixer.get_init():
             pygame.mixer.music.load(temp_speech_file)
             pygame.mixer.music.play()
             
-            interrupt_thread = threading.Thread(target=_listen_for_interrupt, daemon=True)
-            interrupt_thread.start()
+            with state_lock:
+                current_mode = state.get("input_mode", "text")
+            if current_mode == "voice":
+                interrupt_thread = threading.Thread(target=_listen_for_interrupt, daemon=True)
+                interrupt_thread.start()
             
             while pygame.mixer.music.get_busy():
                 with state_lock:
@@ -88,9 +191,13 @@ def _speak_single_chunk(text_chunk):
                 time.sleep(0.05)
             pygame.mixer.music.unload()
             return True
+        else:
+            return _speak_fallback(text_chunk)
     except Exception as e:
-        print(f"TTS Speech error: {e}")
-        return False
+        clean_err = _sanitize_tts_error(e)
+        print(f"TTS Speech error: {clean_err}")
+        print("[TTS] Falling back to local offline speech synthesizer...")
+        return _speak_fallback(text_chunk)
     finally:
         try:
             if os.path.exists(temp_speech_file):
@@ -111,17 +218,26 @@ def speak(text):
         with state_lock:
             if state["stop_speaking"]:
                 break
-        success = _speak_single_chunk(sentence)
-        if not success:
+        try:
+            success = _speak_single_chunk(sentence)
+            if not success and state.get("stop_speaking"):
+                break
+        except Exception as e:
+            # Absolute guard: TTS failure MUST NEVER crash or interrupt caller
+            print(f"[TTS Critical Guard] Speak execution error: {e}")
             break
 
     with state_lock:
         state["last_spoken"] = time.time()
 
 def listen(duration=8):
-    print("Listening...")
     with state_lock:
+        if state.get("input_mode") != "voice":
+            print("[Microphone] OFF (Text Mode active).")
+            return ""
         threshold = state["ambient_threshold"]
+
+    print("Listening...")
         
     pre_buffer = []
     start_time = time.time()
