@@ -7,6 +7,8 @@ import audio_engine
 import wake_word
 import analyzer
 import planner
+from gesture_manager import gesture_manager
+from calendar_manager import calendar_manager
 
 idle_phrases = [
     "Hey, let me know if you need anything.",
@@ -34,9 +36,16 @@ def idle_talker():
             audio_engine.speak(random.choice(idle_phrases))
 
 def run_text_mode():
+    with state_lock:
+        state["input_mode"] = "text"
+        state["awake"] = False
+    audio_engine.stop_microphone()
+
     print("\n" + "=" * 50)
-    print("💬 Jay Terminal Chat Mode Active")
+    print("💬 Jay Terminal Chat Mode Active (Microphone OFF)")
     print("• Type your message or system command directly below.")
+    print("• Type 'time', 'date', 'remind me to [task]', or 'calendar'.")
+    print("• Type 'enable gestures' or 'disable gestures' for hand control.")
     print("• Type 'voice mode' to switch to Voice Activation.")
     print("• Type 'exit' or 'quit' to close Jay.")
     print("=" * 50 + "\n")
@@ -117,6 +126,7 @@ def run_voice_mode(mic_calibrated):
 
                 if not is_awake:
                     if wake_word.listen_for_wake_word():
+                        audio_engine.play_chime("wake")
                         with state_lock:
                             state["awake"] = True
                         planner.clear_session()
@@ -138,10 +148,11 @@ def run_voice_mode(mic_calibrated):
             is_simple, status = analyzer.analyze_and_route_request(command)
 
             if status == "TEXT_MODE":
-                audio_engine.speak("Switching back to text mode.")
                 with state_lock:
                     state["input_mode"] = "text"
                     state["awake"] = False
+                audio_engine.stop_microphone()
+                audio_engine.speak("Switching back to text mode.")
                 break
 
             elif status == "VOICE_MODE":
@@ -175,21 +186,28 @@ def run_jay():
     # Start background idle thread
     threading.Thread(target=idle_talker, daemon=True).start()
 
+    # Start active background reminder daemon
+    calendar_manager.start_reminder_daemon()
+
     mic_calibrated = False
 
-    # Main Mode Switcher Loop
-    while True:
-        with state_lock:
-            current_mode = state.get("input_mode", "text")
+    try:
+        # Main Mode Switcher Loop
+        while True:
+            with state_lock:
+                current_mode = state.get("input_mode", "text")
 
-        if current_mode == "text":
-            result = run_text_mode()
-            if result == "EXIT":
-                break
-        elif current_mode == "voice":
-            result, mic_calibrated = run_voice_mode(mic_calibrated)
-            if result == "EXIT":
-                break
+            if current_mode == "text":
+                result = run_text_mode()
+                if result == "EXIT":
+                    break
+            elif current_mode == "voice":
+                result, mic_calibrated = run_voice_mode(mic_calibrated)
+                if result == "EXIT":
+                    break
+    finally:
+        calendar_manager.stop_reminder_daemon()
+        gesture_manager.disable()
 
 if __name__ == "__main__":
     run_jay()
